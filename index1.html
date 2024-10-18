@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rule Engine</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .rule-container {
+            margin-bottom: 20px;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+ 
+<div class="container">
+    <h1>Rule Engine</h1>
+ 
+    <!-- Create Rule Section -->
+    <div class="rule-container">
+        <h3>Create a Rule</h3>
+        <textarea id="ruleInput" placeholder="Enter your rule string here (e.g., age > 30 AND department = 'Sales')"></textarea>
+        <button onclick="createRule()">Create Rule</button>
+    </div>
+ 
+    <!-- Stored Rules Section -->
+    <div class="rule-container">
+        <h3>Saved Rules</h3>
+        <div id="storedRules"></div>
+    </div>
+ 
+    <!-- Evaluate Rule Section -->
+    <div class="rule-container">
+        <h3>Evaluate Rule</h3>
+        <textarea id="userDataInput" placeholder="Enter user data JSON (e.g., { &quot;age&quot;: 35, &quot;department&quot;: 'Sales', &quot;salary&quot;: 60000, &quot;experience&quot;: 3 })"></textarea>
+        <button onclick="evaluateStoredRule()">Evaluate Selected Rule</button>
+    </div>
+ 
+    <div id="evaluationResult" class="result"></div>
+</div>
+ 
+<script>
+// === Backend Logic (JavaScript) ===
+ 
+// AST Node Definition
+class Node {
+    constructor(type, left = null, right = null, value = null) {
+        this.type = type;
+        this.left = left;
+        this.right = right;
+        this.value = value;
+    }
+}
+ 
+// Parse rule string into AST
+function parseRule(ruleString) {
+    let tokens = tokenize(ruleString);
+    return buildAST(tokens);
+}
+ 
+// Tokenize rule string
+function tokenize(ruleString) {
+    return ruleString.match(/\w+|[><=]+|\(|\)|AND|OR/g);
+}
+ 
+// Build AST from tokens
+function buildAST(tokens) {
+    let stack = [];
+    while (tokens.length > 0) {
+        let token = tokens.shift();
+        if (token === '(') {
+            stack.push(token);
+        } else if (token === ')') {
+            let right = stack.pop();
+            let operator = stack.pop();
+            let left = stack.pop();
+            stack.pop(); // remove '('
+            stack.push(new Node('operator', left, right, operator));
+        } else if (token === 'AND' || token === 'OR') {
+            stack.push(token);
+        } else {
+            let operator = tokens.shift();
+            let value = tokens.shift();
+            stack.push(new Node('operand', null, null, { field: token, operator, value }));
+        }
+    }
+    return stack[0];  // Return root node
+}
+ 
+// Combine multiple ASTs
+function combineRules(rules, operator = 'AND') {
+    let combinedAST = null;
+    rules.forEach(ruleAST => {
+        if (!combinedAST) {
+            combinedAST = ruleAST;
+        } else {
+            combinedAST = new Node('operator', combinedAST, ruleAST, operator);
+        }
+    });
+    return combinedAST;
+}
+ 
+// Evaluate the rule's AST against the provided user data
+function evaluateRule(ast, data) {
+    if (ast.type === 'operator') {
+        let left = evaluateRule(ast.left, data);
+        let right = evaluateRule(ast.right, data);
+        return ast.value === 'AND' ? left && right : left || right;
+    } else if (ast.type === 'operand') {
+        let { field, operator, value } = ast.value;
+        let userValue = data[field];
+        if (operator === '>') return userValue > value;
+        if (operator === '<') return userValue < value;
+        if (operator === '=') return userValue == value;
+        return false;
+    }
+}
+ 
+// === LocalStorage Functions ===
+ 
+// Save AST to localStorage
+function saveASTToLocalStorage(ruleName, ast) {
+    const astJson = JSON.stringify(ast);
+    localStorage.setItem(ruleName, astJson);
+}
+ 
+// Retrieve AST from localStorage
+function getASTFromLocalStorage(ruleName) {
+    const astJson = localStorage.getItem(ruleName);
+    return astJson ? JSON.parse(astJson) : null;
+}
+ 
+// Display saved rules
+function displayStoredRules() {
+    const storedRulesDiv = document.getElementById('storedRules');
+    storedRulesDiv.innerHTML = '';  // Clear existing rules
+    Object.keys(localStorage).forEach(ruleName => {
+        storedRulesDiv.innerHTML += `<div><input type="radio" name="rule" value="${ruleName}"> ${ruleName}</div>`;
+    });
+}
+ 
+// Create a new rule and store it
+function createRule() {
+    const ruleInput = document.getElementById('ruleInput').value;
+    if (!ruleInput) return alert('Please enter a rule string!');
+    const ast = parseRule(ruleInput);
+    const ruleName = `rule_${Date.now()}`;
+    saveASTToLocalStorage(ruleName, ast);
+    displayStoredRules();
+    alert('Rule created and saved!');
+}
+ 
+// Evaluate the selected rule
+function evaluateStoredRule() {
+    const selectedRule = document.querySelector('input[name="rule"]:checked');
+    if (!selectedRule) return alert('Please select a rule!');
+    const userDataInput = document.getElementById('userDataInput').value;
+    let userData;
+    try {
+        userData = JSON.parse(userDataInput);
+    } catch (e) {
+        return alert('Invalid user data JSON!');
+    }
+    const ast = getASTFromLocalStorage(selectedRule.value);
+    const result = evaluateRule(ast, userData);
+    document.getElementById('evaluationResult').innerHTML = `Result: ${result}`;
+}
+ 
+// Initialize the stored rules list on page load
+window.onload = displayStoredRules;
+ 
+</script>
+</body>
+</html>
