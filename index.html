@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rule Engine</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        label {
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 10px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .result {
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Rule Engine</h1>
+
+    <label for="rule">Enter Rule:</label>
+    <textarea id="rule" rows="4" placeholder="Enter rule here, e.g., age > 30 AND department = 'Sales'"></textarea>
+
+    <label for="data">Enter User Attributes (JSON):</label>
+    <textarea id="data" rows="4" placeholder='{"age": 35, "department": "Sales", "salary": 60000, "experience": 3}'></textarea>
+
+    <button onclick="evaluateUser()">Submit</button>
+
+    <div class="result" id="result"></div>
+
+    <script>
+        class Node {
+            constructor(nodeType, value = null) {
+                this.type = nodeType;
+                this.left = null;
+                this.right = null;
+                this.value = value;
+            }
+        }
+
+        function tokenize(ruleString) {
+            return ruleString.match(/\(|\)|\w+|>=|<=|>|<|!=|=|AND|OR/g);
+        }
+
+        function createRule(ruleString) {
+            const tokens = tokenize(ruleString);
+            const stack = [];
+
+            function getOperatorNode(op) {
+                return new Node("operator", op);
+            }
+
+            function getOperandNode(cond) {
+                return new Node("operand", cond);
+            }
+
+            for (const token of tokens) {
+                if (token === "(") {
+                    stack.push(token);
+                } else if (token === ")") {
+                    const right = stack.pop();
+                    const operator = stack.pop();
+                    const left = stack.pop();
+                    stack.pop(); // Remove '('
+                    const node = getOperatorNode(operator.value);
+                    node.left = left;
+                    node.right = right;
+                    stack.push(node);
+                } else if (token === "AND" || token === "OR") {
+                    stack.push(getOperatorNode(token));
+                } else {
+                    stack.push(getOperandNode(token));
+                }
+            }
+
+            return stack[0];
+        }
+
+        // function evaluateRule(ast, data) {
+        //     if (ast.type === "operand") {
+        //         const [leftOperand, operator, rightOperand] = ast.value.split(/([<>!=]=|>=|<=|>|<|=)/);
+        //         const leftValue = data[leftOperand.trim()];
+        //         const rightValue = rightOperand.trim().replace(/'/g, "");
+
+        //         switch (operator) {
+        //             case ">": return leftValue > parseFloat(rightValue);
+        //             case "<": return leftValue < parseFloat(rightValue);
+        //             case ">=": return leftValue >= parseFloat(rightValue);
+        //             case "<=": return leftValue <= parseFloat(rightValue);
+        //             case "=": return String(leftValue) === rightValue;
+        //             case "!=": return String(leftValue) !== rightValue;
+        //         }
+        //     } else if (ast.type === "operator") {
+        //         if (ast.value === "AND") {
+        //             return evaluateRule(ast.left, data) && evaluateRule(ast.right, data);
+        //         } else if (ast.value === "OR") {
+        //             return evaluateRule(ast.left, data) || evaluateRule(ast.right, data);
+        //         }
+        //     }
+        //     return false;
+        // }
+
+        function evaluateRule(ast, data) {
+    if (ast.type === "operand") {
+        const condition = ast.value.split(/([<>!=]=|>=|<=|>|<|=)/);
+        const leftOperand = condition[0] ? condition[0].trim() : null;
+        const operator = condition[1];
+        const rightOperand = condition[2] ? condition[2].trim().replace(/'/g, "") : null;
+
+        if (!leftOperand || !operator || !rightOperand) {
+            throw new Error("Invalid condition or operator in the rule.");
+        }
+
+        const leftValue = data[leftOperand];
+
+        if (leftValue === undefined) {
+            throw new Error(`Attribute ${leftOperand} not found in provided data.`);
+        }
+
+        switch (operator) {
+            case ">": return leftValue > parseFloat(rightOperand);
+            case "<": return leftValue < parseFloat(rightOperand);
+            case ">=": return leftValue >= parseFloat(rightOperand);
+            case "<=": return leftValue <= parseFloat(rightOperand);
+            case "=": return String(leftValue) === rightOperand;
+            case "!=": return String(leftValue) !== rightOperand;
+            default: throw new Error(`Unknown operator ${operator}.`);
+        }
+    } else if (ast.type === "operator") {
+        if (ast.value === "AND") {
+            return evaluateRule(ast.left, data) && evaluateRule(ast.right, data);
+        } else if (ast.value === "OR") {
+            return evaluateRule(ast.left, data) || evaluateRule(ast.right, data);
+        }
+    }
+    return false;
+}
+
+
+        function evaluateUser() {
+            const ruleString = document.getElementById('rule').value;
+            const data = JSON.parse(document.getElementById('data').value);
+
+            const ast = createRule(ruleString);
+            const result = evaluateRule(ast, data);
+
+            document.getElementById('result').textContent = "User is eligible: " + result;
+        }
+    </script>
+</body>
+</html>
